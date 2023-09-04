@@ -1,28 +1,123 @@
-const express = require('express')
+const express = require("express");
+const multer = require("multer");
+const cors = require("cors");
+const fs = require("fs");
+const bodyParser = require("body-parser");
+const db = require("./config/mysql.js");
+const app = express();
+const conn = db.init();
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: function (req, file, callback) {
+      console.log(file),
+        fs.existsSync("./uploads/") ||
+          fs.mkdirSync("./uploads/", { recursive: !0 }),
+        callback(null, "./uploads/");
+    },
+    filename: function (req, file, callback) {
+      callback(null, file.originalname);
+    },
+  }),
+});
 
-const app = express()
+app.set("port", process.env.PORT || 3000);
+app.set("host", process.env.HOST || "localhost");
 
-const port = process.env.PORT || 3000
+// app.use(cors());
+// app.use(bodyParser.json());
+// app.use(bodyParser.urlencoded({ extended: false }));
 
-app.get('/', (req, res) => {
-  res.type('text/plain')
-  res.send('Hello Express')
-})
+// 게시글 목록 보기
+app.get("/member", function (req, res) {
+  var sql = "select * from borad";
+  conn.query(sql, function (err, result) {
+    if (err) console.log("query is not excuted: " + err);
+    else res.send(result);
+  });
+});
 
-app.get('/about', (req, res) => {
-  res.type('text/plain')
-  res.send('About')
-})
+// 게시글 쓰기
+app.post("/member", upload.single("img"), function (req, res) {
+  var body = req.body;
+  var sql = "SELECT count(*)+1 as bnum FROM member ";
+  conn.query(sql, function (err, result) {
+    if (err) console.log("query is not excuted: " + err);
+    else {
+      var sql =
+        "insert into member (id,nickname,level) values(?,?,?)";
+      var params = [result[0].bnum, body.id, body.nickname, body.level];
+      conn.query(sql, params, function (err) {
+        if (err) console.log("query is not excuted: " + err);
+        else if (req.file != null) {
+          // 만약 업로드 된 파일이 있다면
+          var sql =
+            "insert into file (bnum,savefile,filetype,writedate) values (?,?,?,now())";
+          var params = [body.bnum, req.file.originalname, req.file.mimetype];
+          conn.query(sql, params, function (err) {
+            if (err) console.log("query is not excuted: " + err);
+            else res.sendStatus(200);
+          });
+        } else res.sendStatus(200);
+      });
+    }
+  });
+});
 
-// custom 404 page
-app.use((req, res) => {
-  res.type('text/plain')
-  res.status(404)
-  res.send('404')
-})
+// 게시글 보기
+app.get("/member/:bnum", function (req, res) {
+    console.log(req.params.bnum);
+  var sql = "select * from member where seq=" + req.params.bnum;
+  conn.query(sql, function (err, result) {
+    if (err) console.log("query is not excuted: " + err);
+    else res.send(result);
+  });
+});
+
+// 게시글 수정
+app.post("/update/:bnum", function (req, res) {
+  var body = req.body;
+  var sql =
+    "update member set nickname=?, level=? where seq=" + req.params.bnum;
+  var params = [body.nickname, body.level];
+  conn.query(sql, params, function (err) {
+    if (err) console.log("query is not excuted: " + err);
+    else res.sendStatus(200);
+  });
+});
+
+// 게시글 삭제
+app.get("/delete/:bnum", function (req, res) {
+  var sql = "delete from member where seq=" + req.params.bnum;
+  conn.query(sql, function (err) {
+    if (err) console.log("query is not excuted: " + err);
+    else res.sendStatus(200);
+  });
+});
+
+// 이미지 파일 불러오기
+app.get("/img/:bnum", function (req, res) {
+  var sql = "select * from file where bnum=" + req.params.bnum;
+  conn.query(sql, function (err, result) {
+    if (err) console.log("query is not excuted: " + err);
+    else if (result.length != 0) {
+      fs.readFile("uploads/" + result[0].savefile, function (err, data) {
+        res.writeHead(200, { "Context-Type": "text/html" });
+        res.end(data);
+      });
+    } else res.sendStatus(200);
+  });
+});
+
+// 서버 동작중인 표시
+app.listen(app.get("port"), app.get("host"), () =>
+  console.log(
+    "Server is running on : " + app.get("host") + ":" + app.get("port")
+  )
+);
 
 
 
-app.listen(port, () => console.log(
-  `Express started on http://localhost:${port}; ` +
-  `press Ctrl-C to terminate.`))
+
+
+
+
